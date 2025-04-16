@@ -55,12 +55,12 @@ def main():
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    # Read all data from CSV at once
+    # CSV Parse (concurrent)
     with open(csv_file, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         participants = list(reader)
 
-    # Create a partial function with all the fixed parameters
+    # partial function with all the fixed parameters
     process_func = partial(
         process_certificate,
         template_path=template_path,
@@ -73,10 +73,8 @@ def main():
 
     # Process certificates in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
         futures = [executor.submit(process_func, row, i) for i, row in enumerate(participants, start=1)]
 
-        # Wait for all to complete
         concurrent.futures.wait(futures)
 
     elapsed_time = time.time() - start_time
