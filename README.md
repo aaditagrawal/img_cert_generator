@@ -4,7 +4,7 @@ Making certificates for a large quantity of participants can be a tedious task f
 
 ## Usage
 - Clone the repo, and `cd` into it.
-- Run `init.sh` to initiate the environment. This installs `uv`, and installs `pillow` as the dependency, and activates the virtual environment.
+- Run `init.sh` to initiate the environment. This installs `uv` if needed and syncs the locked Pillow dependency into the project virtual environment.
 ```bash
 chmod +x init.sh
 ./init.sh
