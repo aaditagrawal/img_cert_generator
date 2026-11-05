@@ -26,6 +26,10 @@ uv run png.py
 
 This generates a `certificates` folder.
 
+PNG output uses the original standard-library encoder in `png_encoder.py`. It preserves RGBA pixels and inherited ICC profiles. Pillow remains required for template decoding, fonts, text drawing, and the JPEG path, so this replaces PNG encoding without removing the package. PNG compression and file sizes can differ; rendered pixels stay the same.
+
+Run the regression checks with `uv run python -m unittest discover -s tests`.
+
 **NOTE**: If your certificate does not have names right in the center, you might have to adjust the y offset in the script. Moreover, if the name is too long, you might have to modify font sizes as well.
 
 Multithreading ensures that the process is faster.

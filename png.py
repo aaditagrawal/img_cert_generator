@@ -4,6 +4,7 @@ import os
 import concurrent.futures
 from functools import partial
 import time
+from png_encoder import save_rgba_png
 
 def generate_certificate(template_path, font_path, name, output_path, index, font_size=50, text_color="black", y_offset=0):
     # Open the certificate template image
@@ -31,7 +32,8 @@ def generate_certificate(template_path, font_path, name, output_path, index, fon
 
         # Save the image directly
         output_filename = os.path.join(output_path, f"certificate_{index:03d}.png")
-        image.save(output_filename)
+        save_rgba_png(output_filename, image_width, image_height, image.tobytes(),
+                      icc_profile=image.info.get("icc_profile"))
         print(f"Saved certificate for {name} as {output_filename}")
 
 def process_certificate(row, i, template_path, font_path, output_folder, font_size, text_color, y_offset):
