@@ -57,10 +57,20 @@ def save_rgba_png(
 
             # Batch small rows; bound both filtering buffers and IDAT chunks.
             for first_row in range(0, height, rows_per_batch):
-                filtered = b"".join(
-                    b"\0" + data[y * stride : (y + 1) * stride].tobytes()
-                    for y in range(first_row, min(first_row + rows_per_batch, height))
-                )
+                last_row = min(first_row + rows_per_batch, height)
+                row_count = last_row - first_row
+                if stride < row_count:
+                    # Scatter columns in bulk to avoid a Python call per narrow row.
+                    filtered = bytearray(row_count * (stride + 1))
+                    for column in range(stride):
+                        filtered[column + 1 :: stride + 1] = pixels[
+                            first_row * stride + column : last_row * stride : stride
+                        ]
+                else:
+                    filtered = b"".join(
+                        b"\0" + data[y * stride : (y + 1) * stride].tobytes()
+                        for y in range(first_row, last_row)
+                    )
                 compressed = compressor.compress(filtered)
                 if first_row + rows_per_batch >= height:
                     compressed += compressor.flush()

@@ -22,7 +22,7 @@ class PngEncoderTests(unittest.TestCase):
 
     def test_lossless_pixels_and_chunk_integrity(self):
         rng = random.Random(17)
-        for width, height in [(1, 1), (1, 37), (73, 19), (20000, 2)]:
+        for width, height in [(1, 1), (1, 37), (1, 20000), (3, 20000), (73, 19), (20000, 2)]:
             with self.subTest(size=(width, height)):
                 pixels = rng.randbytes(width * height * 4)
                 save_rgba_png(self.path, width, height, pixels)
