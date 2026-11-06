@@ -26,7 +26,11 @@ uv run png.py
 
 This generates a `certificates` folder.
 
-PNG output uses the original standard-library encoder in `png_encoder.py`. It preserves RGBA pixels and inherited ICC profiles, exporting small row batches to avoid full-image byte copies. Pillow remains required for template decoding, fonts, text drawing, and the JPEG path, so this replaces PNG encoding without removing the package. PNG compression and file sizes can differ; rendered pixels stay the same.
+PNG output uses the owned writer in `png_encoder.py` and adaptive row filters in `png_filters.c`. It preserves RGBA pixels, inherited ICC profiles and the previous compression settings, exporting small row batches to bound memory. Pillow remains required for decoding, fonts, text drawing and JPEG. This partially replaces Pillow's PNG encoding without removing its package.
+
+Overlapping PNG certificate calls share one decoded template and draw on separate copies. File changes invalidate the shared template, and the last active call frees it. This avoids decoding the same file in every worker without retaining images between batches.
+
+Source installs now require a C compiler and Python development headers to build the small filter extension with setuptools. Run `uv sync` before running either script. No external C libraries are needed by the extension, and no compiler is used at runtime. For example, Debian/Ubuntu source builds need `build-essential` and `python3-dev`. The extension uses the CPython C API and must be rebuilt for each Python ABI and platform. The kernel follows the [PNG filter specification](https://www.w3.org/TR/png-3/#9Filters); its independent predictor oracle is in `tests/test_png_filters.py`.
 
 Run the regression checks with `uv run python -m unittest discover -s tests`.
 

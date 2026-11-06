@@ -122,6 +122,7 @@ def main():
                 assert previous.size == current.size == image.size
                 assert previous.tobytes() == current.tobytes() == image.tobytes()
                 assert previous.info == current.info
+            assert new_path.stat().st_size <= old_path.stat().st_size, name
             report["encoding"][name] = {
                 "size": image.size, "timings": timings,
                 "baseline_bytes": old_path.stat().st_size,
@@ -151,8 +152,12 @@ def main():
                 "baseline": lambda: batch(baseline.process_certificate, folders["baseline"]),
                 "candidate": lambda: batch(png.process_certificate, folders["candidate"]),
             }, args.samples, args.warmups)
+        report["batch_output_bytes"] = {"baseline": [], "candidate": []}
         for index in range(1, len(rows) + 1):
             filename = f"certificate_{index:03d}.png"
+            for variant, folder in folders.items():
+                report["batch_output_bytes"][variant].append((folder / filename).stat().st_size)
+            assert (folders["candidate"] / filename).stat().st_size <= (folders["baseline"] / filename).stat().st_size
             with (
                 Image.open(folders["baseline"] / filename) as previous,
                 Image.open(folders["candidate"] / filename) as current,

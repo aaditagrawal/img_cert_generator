@@ -45,7 +45,7 @@ class PngEncoderTests(unittest.TestCase):
                     self.assertEqual(crc, zlib.crc32(kind + data))
                     kinds.append(kind)
                     if kind == b"IDAT":
-                        self.assertLessEqual(size, 65536)
+                        self.assertLessEqual(size, max(65536, width * 4))
                         compressed.extend(data)
                     position += size + 12
                 self.assertEqual(position, len(encoded))
@@ -53,11 +53,20 @@ class PngEncoderTests(unittest.TestCase):
                 self.assertEqual(kinds[-1], b"IEND")
                 self.assertEqual(set(kinds), {b"IHDR", b"IDAT", b"IEND"})
                 scanlines = zlib.decompress(compressed)
-                expected = b"".join(
-                    b"\0" + pixels[y * width * 4 : (y + 1) * width * 4]
-                    for y in range(height)
-                )
-                self.assertEqual(scanlines, expected)
+                self.assertEqual(len(scanlines), height * (width * 4 + 1))
+                self.assertTrue(all(kind in (0, 1, 2, 4) for kind in scanlines[::width * 4 + 1]))
+
+    def test_wide_image_framing_does_not_increase_output_size(self):
+        rng = random.Random(91)
+        for width in [16384, 16385, 262144, 262145]:
+            with self.subTest(width=width):
+                pixels = rng.randbytes(width * 2 * 4)
+                reference = io.BytesIO()
+                Image.frombytes("RGBA", (width, 2), pixels).save(reference, format="PNG")
+                save_rgba_png(self.path, width, 2, pixels)
+                self.assertEqual(self.path.stat().st_size, len(reference.getvalue()))
+                with Image.open(self.path) as output:
+                    self.assertEqual(output.tobytes(), pixels)
 
     def test_inherited_metadata_matches_previous_save(self):
         source = Path(self.directory.name) / "source.png"

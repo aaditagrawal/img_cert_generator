@@ -1,7 +1,8 @@
 """Encode rendered RGBA8 certificates without a third-party PNG encoder.
 
 Only encoding lives here. Template decoding and text rendering still use Pillow.
-The output follows https://www.w3.org/TR/png-3/ and uses unfiltered scanlines.
+The output follows https://www.w3.org/TR/png-3/. An owned C kernel selects
+adaptive row filters; the standard library handles chunks, CRCs and deflate.
 """
 
 import os
@@ -10,8 +11,10 @@ import zlib
 from collections.abc import Callable
 from typing import BinaryIO
 
+from _png_filters import filter_rows
 
-def _write_chunk(stream: BinaryIO, kind: bytes, data: bytes | memoryview) -> None:
+
+def _write_chunk(stream: BinaryIO, kind: bytes, data: bytes | bytearray | memoryview) -> None:
     stream.write(struct.pack(">I", len(data)))
     stream.write(kind)
     stream.write(data)
@@ -45,9 +48,18 @@ def save_rgba_png(
         raise ValueError("ICC profile exceeds PNG chunk size limit")
 
     stride = width * 4
-    # Level 1 trades larger lossless files for lower measured encoding costs.
-    compressor = zlib.compressobj(level=1)
-    rows_per_batch = max(1, 65536 // (stride + 1))
+    # Match the original encoder's output buffer, including very wide rows.
+    # Smaller chunks would add framing bytes without changing compressed data.
+    idat_size = min(0x7FFFFFFF, max(65536, stride))
+    # Keep the previous PNG compression policy instead of trading size for speed.
+    compressor = zlib.compressobj(level=-1, memLevel=9, strategy=zlib.Z_FILTERED)
+    rows_per_export = max(1, 65536 // (stride + 1))
+    # Export small crops, but amortize GIL handoffs over larger codec batches.
+    # Working buffers depend on this limit and row width, never image height.
+    exports_per_batch = max(1, 1048576 // (rows_per_export * (stride + 1)))
+    rows_per_batch = rows_per_export * exports_per_batch
+    previous = bytes(stride)
+    pending = bytearray()
     created = not os.path.exists(path)
     try:
         with open(path, "wb") as stream:
@@ -59,29 +71,30 @@ def save_rgba_png(
             # Batch small rows; bound both filtering buffers and IDAT chunks.
             for first_row in range(0, height, rows_per_batch):
                 last_row = min(first_row + rows_per_batch, height)
-                row_count = last_row - first_row
-                block = (
-                    pixels[first_row * stride : last_row * stride]
-                    if isinstance(pixels, bytes) else pixels(first_row, last_row)
-                )
-                if len(block) != row_count * stride:
-                    raise ValueError("Expected exactly width * row_count * 4 RGBA bytes")
-                data = memoryview(block)
-                if stride < row_count:
-                    # Scatter columns in bulk to avoid a Python call per narrow row.
-                    filtered = bytearray(row_count * (stride + 1))
-                    for column in range(stride):
-                        filtered[column + 1 :: stride + 1] = block[column::stride]
+                if isinstance(pixels, bytes):
+                    block = pixels[first_row * stride : last_row * stride]
                 else:
-                    filtered = b"".join(
-                        b"\0" + data[y * stride : (y + 1) * stride].tobytes()
-                        for y in range(row_count)
-                    )
+                    exports = []
+                    for first in range(first_row, last_row, rows_per_export):
+                        last = min(first + rows_per_export, last_row)
+                        part = pixels(first, last)
+                        if len(part) != (last - first) * stride:
+                            raise ValueError("Expected exactly width * row_count * 4 RGBA bytes")
+                        exports.append(part)
+                    block = b"".join(exports)
+                    exports.clear()
+                filtered = filter_rows(block, previous, stride)
+                previous = block[-stride:]
                 compressed = compressor.compress(filtered)
                 if first_row + rows_per_batch >= height:
                     compressed += compressor.flush()
-                for offset in range(0, len(compressed), 65536):
-                    _write_chunk(stream, b"IDAT", compressed[offset : offset + 65536])
+                pending.extend(compressed)
+                complete = len(pending) // idat_size * idat_size
+                for offset in range(0, complete, idat_size):
+                    _write_chunk(stream, b"IDAT", memoryview(pending)[offset:offset + idat_size])
+                del pending[:complete]
+            if pending:
+                _write_chunk(stream, b"IDAT", pending)
             _write_chunk(stream, b"IEND", b"")
     except BaseException:
         # Match the previous save path: remove a newly created partial output.
