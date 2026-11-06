@@ -26,7 +26,7 @@ uv run png.py
 
 This generates a `certificates` folder.
 
-PNG output uses the original standard-library encoder in `png_encoder.py`. It preserves RGBA pixels and inherited ICC profiles. Pillow remains required for template decoding, fonts, text drawing, and the JPEG path, so this replaces PNG encoding without removing the package. PNG compression and file sizes can differ; rendered pixels stay the same.
+PNG output uses the original standard-library encoder in `png_encoder.py`. It preserves RGBA pixels and inherited ICC profiles, exporting small row batches to avoid full-image byte copies. Pillow remains required for template decoding, fonts, text drawing, and the JPEG path, so this replaces PNG encoding without removing the package. PNG compression and file sizes can differ; rendered pixels stay the same.
 
 Run the regression checks with `uv run python -m unittest discover -s tests`.
 

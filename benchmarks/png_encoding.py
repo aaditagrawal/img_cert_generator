@@ -111,7 +111,8 @@ def main():
             operations = {
                 "baseline": lambda image=image: image.save(old_path),
                 "candidate": lambda image=image: save_rgba_png(
-                    new_path, *image.size, image.tobytes(),
+                    new_path, *image.size,
+                    lambda first, last: image.crop((0, first, image.width, last)).tobytes(),
                     icc_profile=image.info.get("icc_profile"),
                 ),
             }

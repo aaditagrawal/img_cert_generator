@@ -1,5 +1,6 @@
 import contextlib
 import io
+import itertools
 import random
 import struct
 import tempfile
@@ -86,6 +87,30 @@ class PngEncoderTests(unittest.TestCase):
                 ):
                     self.assertEqual(output.info, previous.info)
                     self.assertEqual(output.tobytes(), previous.tobytes())
+
+    def test_pixel_export_is_bounded_and_handles_batch_boundaries(self):
+        width, height = 7, 10001
+        pixels = random.Random(23).randbytes(width * height * 4)
+        exports = []
+
+        def export(first, last):
+            exports.append((first, last))
+            self.assertLessEqual((last - first) * (width * 4 + 1), 65536)
+            return pixels[first * width * 4 : last * width * 4]
+
+        save_rgba_png(self.path, width, height, export)
+        self.assertEqual(exports[0][0], 0)
+        self.assertEqual(exports[-1][1], height)
+        self.assertGreater(len(exports), 1)
+        for previous, current in itertools.pairwise(exports):
+            self.assertEqual(previous[1], current[0])
+        with Image.open(self.path) as image:
+            self.assertEqual(image.tobytes(), pixels)
+
+    def test_invalid_row_export_removes_partial_output(self):
+        with self.assertRaises(ValueError):
+            save_rgba_png(self.path, 2, 3, lambda first, last: b"1234")
+        self.assertFalse(self.path.exists())
 
     def test_invalid_input_does_not_truncate_existing_output(self):
         self.path.write_bytes(b"existing certificate")

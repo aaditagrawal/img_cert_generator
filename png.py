@@ -32,7 +32,8 @@ def generate_certificate(template_path, font_path, name, output_path, index, fon
 
         # Save the image directly
         output_filename = os.path.join(output_path, f"certificate_{index:03d}.png")
-        save_rgba_png(output_filename, image_width, image_height, image.tobytes(),
+        save_rgba_png(output_filename, image_width, image_height,
+                      lambda first, last: image.crop((0, first, image_width, last)).tobytes(),
                       icc_profile=image.info.get("icc_profile"))
         print(f"Saved certificate for {name} as {output_filename}")
 

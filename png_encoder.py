@@ -7,6 +7,7 @@ The output follows https://www.w3.org/TR/png-3/ and uses unfiltered scanlines.
 import os
 import struct
 import zlib
+from collections.abc import Callable
 from typing import BinaryIO
 
 
@@ -21,7 +22,7 @@ def save_rgba_png(
     path: str | os.PathLike[str],
     width: int,
     height: int,
-    pixels: bytes,
+    pixels: bytes | Callable[[int, int], bytes],
     *,
     icc_profile: bytes | None = None,
 ) -> None:
@@ -29,13 +30,14 @@ def save_rgba_png(
 
     Preserve an inherited ICC profile, as the previous PNG save path did.
     Other template metadata was not automatically saved by that path.
-    Invalid dimensions/buffers fail before opening the output file.
+    Invalid dimensions and packed buffers fail before opening the output file.
+    A callback can export rows [first, last) on demand to bound pixel memory.
     """
     if not isinstance(width, int) or not isinstance(height, int):
         raise TypeError("PNG dimensions must be integers")
     if not (0 < width <= 0x7FFFFFFF and 0 < height <= 0x7FFFFFFF):
         raise ValueError("PNG dimensions must be between 1 and 2**31 - 1")
-    if len(pixels) != width * height * 4:
+    if isinstance(pixels, bytes) and len(pixels) != width * height * 4:
         raise ValueError("Expected exactly width * height * 4 RGBA bytes")
 
     profile = b"ICC Profile\0\0" + zlib.compress(icc_profile) if icc_profile else None
@@ -43,7 +45,6 @@ def save_rgba_png(
         raise ValueError("ICC profile exceeds PNG chunk size limit")
 
     stride = width * 4
-    data = memoryview(pixels)
     # Level 1 trades larger lossless files for lower measured encoding costs.
     compressor = zlib.compressobj(level=1)
     rows_per_batch = max(1, 65536 // (stride + 1))
@@ -59,17 +60,22 @@ def save_rgba_png(
             for first_row in range(0, height, rows_per_batch):
                 last_row = min(first_row + rows_per_batch, height)
                 row_count = last_row - first_row
+                block = (
+                    pixels[first_row * stride : last_row * stride]
+                    if isinstance(pixels, bytes) else pixels(first_row, last_row)
+                )
+                if len(block) != row_count * stride:
+                    raise ValueError("Expected exactly width * row_count * 4 RGBA bytes")
+                data = memoryview(block)
                 if stride < row_count:
                     # Scatter columns in bulk to avoid a Python call per narrow row.
                     filtered = bytearray(row_count * (stride + 1))
                     for column in range(stride):
-                        filtered[column + 1 :: stride + 1] = pixels[
-                            first_row * stride + column : last_row * stride : stride
-                        ]
+                        filtered[column + 1 :: stride + 1] = block[column::stride]
                 else:
                     filtered = b"".join(
                         b"\0" + data[y * stride : (y + 1) * stride].tobytes()
-                        for y in range(first_row, last_row)
+                        for y in range(row_count)
                     )
                 compressed = compressor.compress(filtered)
                 if first_row + rows_per_batch >= height:
