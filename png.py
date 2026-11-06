@@ -1,14 +1,18 @@
-import csv
-from PIL import Image, ImageDraw, ImageFont
-import os
 import concurrent.futures
-from functools import partial
+import csv
+import os
 import time
+from functools import partial
+
+from PIL import ImageDraw, ImageFont
+
+from certificate_template import rgba_template
+from png_encoder import save_rgba_png
+
 
 def generate_certificate(template_path, font_path, name, output_path, index, font_size=50, text_color="black", y_offset=0):
     # Open the certificate template image
-    with Image.open(template_path) as image:
-        image = image.convert("RGBA")
+    with rgba_template(template_path) as image:
         draw = ImageDraw.Draw(image)
 
         # Load the specified font at the desired size
@@ -31,7 +35,9 @@ def generate_certificate(template_path, font_path, name, output_path, index, fon
 
         # Save the image directly
         output_filename = os.path.join(output_path, f"certificate_{index:03d}.png")
-        image.save(output_filename)
+        save_rgba_png(output_filename, image_width, image_height,
+                      lambda first, last: image.crop((0, first, image_width, last)).tobytes(),
+                      icc_profile=image.info.get("icc_profile"))
         print(f"Saved certificate for {name} as {output_filename}")
 
 def process_certificate(row, i, template_path, font_path, output_folder, font_size, text_color, y_offset):

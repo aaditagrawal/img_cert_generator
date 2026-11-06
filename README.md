@@ -26,6 +26,14 @@ uv run png.py
 
 This generates a `certificates` folder.
 
+PNG output uses the owned writer in `png_encoder.py` and adaptive row filters in `png_filters.c`. It preserves RGBA pixels, inherited ICC profiles and the previous compression settings, exporting small row batches to bound memory. Pillow remains required for decoding, fonts, text drawing and JPEG. This partially replaces Pillow's PNG encoding without removing its package.
+
+Overlapping PNG certificate calls share one decoded template and draw on separate copies. File changes invalidate the shared template, and the last active call frees it. This avoids decoding the same file in every worker without retaining images between batches.
+
+Source installs now require a C compiler and Python development headers to build the small filter extension with setuptools. Run `uv sync` before running either script. No external C libraries are needed by the extension, and no compiler is used at runtime. For example, Debian/Ubuntu source builds need `build-essential` and `python3-dev`. The extension uses the CPython C API and must be rebuilt for each Python ABI and platform. The kernel follows the [PNG filter specification](https://www.w3.org/TR/png-3/#9Filters); its independent predictor oracle is in `tests/test_png_filters.py`.
+
+Run the regression checks with `uv run python -m unittest discover -s tests`.
+
 **NOTE**: If your certificate does not have names right in the center, you might have to adjust the y offset in the script. Moreover, if the name is too long, you might have to modify font sizes as well.
 
 Multithreading ensures that the process is faster.
